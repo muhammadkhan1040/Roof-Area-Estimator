@@ -309,6 +309,17 @@ def find_predominant_pitch(roof_segments: list) -> str:
     return predominant
 
 
+def azimuth_to_direction(azimuth: float) -> str:
+    """
+    Convert azimuth angle to cardinal direction.
+    
+    0° = North, 90° = East, 180° = South, 270° = West
+    """
+    directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "N"]
+    index = round(azimuth / 45) % 8
+    return directions[index]
+
+
 def normalize_solar_data(
     raw_data: dict,
     address: str,
@@ -316,31 +327,90 @@ def normalize_solar_data(
     """
     Convert Google Solar API response to canonical RoofMeasurementResponse.
     
-    Key transformations:
-    - areaMeters2 → sqft (multiply by 10.764)
-    - roofSegmentStats → predominant pitch (find most common)
-    - Set source to GOOGLE_SOLAR
-    - Set status to ESTIMATE
+    Extracts ALL available data from Google Solar API:
+    - Area (converted to sqft)
+    - Pitch (predominant from roof segments)
+    - Sunshine hours per year
+    - Carbon offset factor
+    - Imagery quality and date
+    - Roof facet count and segment details
+    - Solar panel potential
     """
-    # Extract total area and convert to sqft
     solar_potential = raw_data.get("solarPotential", {})
-    area_meters = solar_potential.get("wholeRoofStats", {}).get("areaMeters2", 0)
     
-    # Fallback to maxArrayAreaMeters2 if wholeRoofStats not available
+    # ===== CORE: Area in sqft =====
+    area_meters = solar_potential.get("wholeRoofStats", {}).get("areaMeters2", 0)
     if area_meters == 0:
         area_meters = solar_potential.get("maxArrayAreaMeters2", 0)
-    
     area_sqft = area_meters * 10.764
     
-    # Find predominant pitch
-    roof_segments = solar_potential.get("roofSegmentStats", [])
-    predominant_pitch = find_predominant_pitch(roof_segments)
+    # ===== CORE: Predominant Pitch =====
+    roof_segments_raw = solar_potential.get("roofSegmentStats", [])
+    predominant_pitch = find_predominant_pitch(roof_segments_raw)
     
-    # Calculate confidence based on data quality
-    imagery_quality = raw_data.get("imageryQuality", "IMAGERY_QUALITY_UNSPECIFIED")
-    confidence = 0.8 if imagery_quality == "HIGH" else 0.6
+    # ===== NEW: Imagery Quality & Date =====
+    imagery_quality_raw = raw_data.get("imageryQuality", "IMAGERY_QUALITY_UNSPECIFIED")
+    # Clean up the quality string
+    imagery_quality = imagery_quality_raw.replace("IMAGERY_QUALITY_", "").replace("_", " ").title()
+    if imagery_quality == "Unspecified":
+        imagery_quality = "Unknown"
+    
+    imagery_date = raw_data.get("imageryDate", {})
+    if imagery_date:
+        year = imagery_date.get("year", "")
+        month = imagery_date.get("month", "")
+        day = imagery_date.get("day", "")
+        if year and month:
+            imagery_date_str = f"{year}-{month:02d}" if isinstance(month, int) else f"{year}-{month}"
+            if day:
+                imagery_date_str += f"-{day:02d}" if isinstance(day, int) else f"-{day}"
+        else:
+            imagery_date_str = None
+    else:
+        imagery_date_str = None
+    
+    # ===== NEW: Sunshine Hours =====
+    max_sunshine_hours = solar_potential.get("maxSunshineHoursPerYear")
+    
+    # ===== NEW: Carbon Offset =====
+    carbon_offset = solar_potential.get("carbonOffsetFactorKgPerMwh")
+    
+    # ===== NEW: Roof Segment Details =====
+    roof_facet_count = len(roof_segments_raw)
+    
+    # Import here to avoid circular import
+    from app.models import RoofSegmentDetail
+    
+    roof_segments = []
+    for segment in roof_segments_raw:
+        seg_area_m2 = segment.get("stats", {}).get("areaMeters2", 0)
+        seg_pitch_deg = segment.get("pitchDegrees", 0)
+        seg_azimuth = segment.get("azimuthDegrees", 0)
+        
+        roof_segments.append(RoofSegmentDetail(
+            area_sqft=round(seg_area_m2 * 10.764, 2),
+            pitch=degrees_to_pitch_string(seg_pitch_deg),
+            azimuth_degrees=round(seg_azimuth, 1),
+            azimuth_direction=azimuth_to_direction(seg_azimuth),
+        ))
+    
+    # Sort by area (largest first)
+    roof_segments.sort(key=lambda x: x.area_sqft, reverse=True)
+    
+    # ===== NEW: Solar Panel Potential =====
+    max_panels = solar_potential.get("maxArrayPanelsCount")
+    panel_capacity = solar_potential.get("panelCapacityWatts")
+    if panel_capacity:
+        panel_capacity = int(panel_capacity)
+    
+    # ===== Confidence Score =====
+    confidence = 0.85 if imagery_quality == "High" else (0.7 if imagery_quality == "Medium" else 0.5)
+    
+    # ===== Calculate Roofing Squares =====
+    squares_needed = round(area_sqft / 100, 1) if area_sqft > 0 else None
     
     return RoofMeasurementResponse(
+        # Core
         status=MeasurementStatus.ESTIMATE,
         total_area_sqft=round(area_sqft, 2),
         predominant_pitch=predominant_pitch,
@@ -349,6 +419,20 @@ def normalize_solar_data(
         address=address,
         order_id=None,
         message=None,
+        # Extended - Sunshine & Energy
+        max_sunshine_hours_per_year=round(max_sunshine_hours, 1) if max_sunshine_hours else None,
+        carbon_offset_factor=round(carbon_offset, 2) if carbon_offset else None,
+        # Extended - Imagery
+        imagery_quality=imagery_quality if imagery_quality != "Unknown" else None,
+        imagery_date=imagery_date_str,
+        # Extended - Roof Complexity
+        roof_facet_count=roof_facet_count if roof_facet_count > 0 else None,
+        roof_segments=roof_segments if roof_segments else None,
+        # Extended - Solar Potential
+        max_panels=max_panels,
+        panel_capacity_watts=panel_capacity,
+        # Materials
+        squares_needed=squares_needed,
     )
 
 

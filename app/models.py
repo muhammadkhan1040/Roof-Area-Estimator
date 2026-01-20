@@ -57,6 +57,14 @@ class DataSource(str, Enum):
 # Pydantic Schemas (API Layer)
 # =============================================================================
 
+class RoofSegmentDetail(BaseModel):
+    """Details about a single roof segment/facet."""
+    area_sqft: float = Field(description="Area of this segment in sqft")
+    pitch: str = Field(description="Pitch of this segment, e.g., '6/12'")
+    azimuth_degrees: float = Field(description="Compass direction (0=N, 90=E, 180=S, 270=W)")
+    azimuth_direction: str = Field(description="Cardinal direction (N, NE, E, etc.)")
+
+
 class RoofMeasurementResponse(BaseModel):
     """
     The Canonical Roof Model - unified response schema for both tiers.
@@ -65,6 +73,7 @@ class RoofMeasurementResponse(BaseModel):
     Whether data comes from Google Solar (free, instant) or EagleView 
     (paid, verified), it gets normalized to this format.
     """
+    # Core measurements
     status: MeasurementStatus = Field(
         description="Current measurement status"
     )
@@ -96,6 +105,76 @@ class RoofMeasurementResponse(BaseModel):
         description="Additional information or error messages"
     )
     
+    # ===== NEW: Google Solar Extended Data =====
+    
+    # Sunshine & Energy
+    max_sunshine_hours_per_year: Optional[float] = Field(
+        default=None,
+        description="Maximum sunshine hours per year (1 sunshine hour = 1 kWh/kW)"
+    )
+    carbon_offset_factor: Optional[float] = Field(
+        default=None,
+        description="CO2 offset in kg per MWh of solar electricity"
+    )
+    
+    # Imagery Quality
+    imagery_quality: Optional[str] = Field(
+        default=None,
+        description="Quality of satellite imagery: HIGH, MEDIUM, LOW"
+    )
+    imagery_date: Optional[str] = Field(
+        default=None,
+        description="Date of the satellite imagery used"
+    )
+    
+    # Roof Complexity
+    roof_facet_count: Optional[int] = Field(
+        default=None,
+        description="Number of distinct roof segments/facets"
+    )
+    roof_segments: Optional[list[RoofSegmentDetail]] = Field(
+        default=None,
+        description="Details of individual roof segments"
+    )
+    
+    # Solar Panel Potential
+    max_panels: Optional[int] = Field(
+        default=None,
+        description="Maximum number of solar panels that can fit"
+    )
+    panel_capacity_watts: Optional[int] = Field(
+        default=None,
+        description="Capacity per panel in watts"
+    )
+    
+    # ===== NEW: EagleView Extended Data (Tier 2) =====
+    
+    # Line lengths (for materials estimation)
+    ridge_length_ft: Optional[float] = Field(
+        default=None,
+        description="Total ridge length in feet"
+    )
+    valley_length_ft: Optional[float] = Field(
+        default=None,
+        description="Total valley length in feet"
+    )
+    eave_length_ft: Optional[float] = Field(
+        default=None,
+        description="Total eave/perimeter length in feet"
+    )
+    
+    # Waste factor calculations
+    squares_needed: Optional[float] = Field(
+        default=None,
+        description="Roofing squares needed (1 square = 100 sqft)"
+    )
+    
+    # Structure breakdown
+    structures: Optional[list[dict]] = Field(
+        default=None,
+        description="Breakdown by structure (main house, garage, etc.)"
+    )
+    
     class Config:
         json_schema_extra = {
             "example": {
@@ -106,7 +185,12 @@ class RoofMeasurementResponse(BaseModel):
                 "confidence_score": 0.85,
                 "address": "1600 Amphitheatre Parkway, Mountain View, CA",
                 "order_id": None,
-                "message": None
+                "message": None,
+                "max_sunshine_hours_per_year": 1450,
+                "carbon_offset_factor": 428.5,
+                "imagery_quality": "HIGH",
+                "roof_facet_count": 12,
+                "max_panels": 45
             }
         }
 
