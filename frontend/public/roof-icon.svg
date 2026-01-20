@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="roofGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+  </defs>
+  <path d="M50 10 L90 45 L90 85 L10 85 L10 45 Z" fill="url(#roofGrad)" stroke="#4c1d95" stroke-width="2"/>
+  <path d="M50 10 L10 45 L90 45 Z" fill="#8b5cf6" stroke="#4c1d95" stroke-width="2"/>
+  <rect x="40" y="55" width="20" height="30" fill="#1e1b4b" rx="2"/>
+  <circle cx="55" cy="70" r="2" fill="#fbbf24"/>
+</svg>
