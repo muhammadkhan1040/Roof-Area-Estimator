@@ -43,7 +43,7 @@ settings = get_settings()
 
 # API endpoints - EagleView Connect API
 # Note: These are example endpoints - verify with actual EagleView documentation
-EAGLEVIEW_AUTH_URL = "https://oauth.eagleview.com/oauth2/default/v1/token"
+EAGLEVIEW_AUTH_URL = "https://apicenter.eagleview.com/oauth2/v1/token"
 EAGLEVIEW_ORDERS_URL = f"{settings.eagleview_base_url}/v1/orders"
 
 # Cost per order
@@ -170,6 +170,10 @@ async def get_bearer_token(db: AsyncSession) -> str:
     """
     global _token_cache
     
+    # Mock Mode Check
+    if settings.eagleview_mock_mode:
+        return "MOCK_BEARER_TOKEN"
+
     # Check if cached token is still valid
     if _token_cache["access_token"] and _token_cache["expires_at"]:
         if datetime.utcnow() < _token_cache["expires_at"]:
@@ -182,7 +186,7 @@ async def get_bearer_token(db: AsyncSession) -> str:
         "grant_type": "client_credentials",
         "client_id": settings.eagleview_client_id,
         "client_secret": settings.eagleview_client_secret,
-        "scope": "reports:read reports:write",
+        # Scope removed as it caused 400 errors (Server default scope is sufficient)
     }
     
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -263,6 +267,17 @@ async def place_order(
     """
     # SAFETY CHECK - This is where we protect against accidental costs
     is_safe, reason = await check_safety_controls(db)
+    
+    # Mock Mode Injection
+    if settings.eagleview_mock_mode:
+        import time
+        mock_id = f"MOCK-ORD-{int(time.time())}"
+        await log_api_call(
+            db=db, endpoint="orders", method="POST (MOCK)", cost=0.0, 
+            address=address, status=200, success=True, error="Mock Mode"
+        )
+        return mock_id
+
     if not is_safe:
         if "disabled" in reason.lower():
             raise EagleViewDisabledError(reason)
@@ -348,6 +363,9 @@ async def check_order_status(
     Returns:
         Status string: "PENDING", "COMPLETED", or "FAILED"
     """
+    if order_id.startswith("MOCK-"):
+        return "COMPLETED"
+
     token = await get_bearer_token(db)
     
     url = f"{EAGLEVIEW_ORDERS_URL}/{order_id}/status"
@@ -400,6 +418,18 @@ async def get_report(
     Raises:
         ValueError: If report not available
     """
+    if order_id.startswith("MOCK-"):
+        return {
+            "reportId": order_id,
+            "status": 5,
+            "roofMeasurements": {
+                "totalArea": 2500,
+                "predominantPitch": "6/12",
+                "ridges": 150,
+                "valleys": 50
+            }
+        }
+
     token = await get_bearer_token(db)
     
     url = f"{EAGLEVIEW_ORDERS_URL}/{order_id}/report"

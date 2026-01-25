@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # SAFETY CONTROLS - CRITICAL!
     # EagleView is DISABLED by default. You must explicitly enable it.
     eagleview_live_mode: bool = False  # Set to True only when ready to pay
+    eagleview_mock_mode: bool = True   # If True, returns fake data (Zero Cost)
     eagleview_daily_order_limit: int = 5  # Max orders per day
     
     # Database

@@ -127,6 +127,7 @@ class HealthResponse(BaseModel):
     """Health check response."""
     status: str
     eagleview_enabled: bool
+    eagleview_mock_mode: bool
     google_api_configured: bool
     daily_order_count: int
     daily_order_limit: int
@@ -164,6 +165,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     return HealthResponse(
         status="healthy",
         eagleview_enabled=settings.eagleview_live_mode,
+        eagleview_mock_mode=settings.eagleview_mock_mode,
         google_api_configured=settings.google_api_key != "not_configured",
         daily_order_count=current_orders,
         daily_order_limit=settings.eagleview_daily_order_limit,

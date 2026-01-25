@@ -195,286 +195,236 @@ function ResultCard({ data, onUpgrade, isUpgrading, tier2Disabled }) {
   const hasValidData = data.total_area_sqft > 0;
 
   return (
-    <div className={`result-card ${isVerified ? 'tier-2' : 'tier-1'}`}>
-      <div className="result-header">
-        <div>
-          <div className="result-title">
-            {isVerified ? '✅ Verified Report' : '⚡ Instant Estimate'}
-          </div>
-          <div className="result-address">{data.address}</div>
-        </div>
-        <StatusBadge status={data.status} />
-      </div>
+    <div className={`result-card ${isVerified ? 'tier-2' : ''}`}>
+      <div className="result-card-grid">
 
-      {/* Error/Warning Message */}
-      {data.message && (
-        <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
-          <Icons.AlertTriangle />
-          <span>{data.message}</span>
-        </div>
-      )}
-
-      {hasValidData && (
-        <>
-          <PitchVisualizer pitch={data.predominant_pitch} />
-
-          {/* Primary Metrics */}
-          <div className="metrics-grid">
-            <div className="metric highlight">
-              <div className="metric-value">
-                {data.total_area_sqft?.toLocaleString() || '—'}
+        {/* === LEFT COLUMN: Visuals & Core Metrics === */}
+        <div className="result-left-col">
+          {/* Header (Title + Address) */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
+              <StatusBadge status={data.status} />
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)' }}>
+                  {data.source === 'EAGLEVIEW' ? 'Source: EagleView' : 'Source: Google Solar'}
+                </div>
+                {data.is_cached && (
+                  <div style={{ fontSize: '10px', color: '#059669', fontWeight: 'bold', marginTop: '2px' }}>
+                    ⚡ FROM CACHE
+                  </div>
+                )}
               </div>
-              <div className="metric-label">Square Feet</div>
             </div>
-            <div className="metric">
-              <div className="metric-value">{data.predominant_pitch || '—'}</div>
-              <div className="metric-label">Pitch</div>
+            <div className="result-address">{data.address}</div>
+          </div>
+
+          {hasValidData && (
+            <>
+              {/* Pitch Visual */}
+              <div style={{ padding: 'var(--space-4)', background: 'var(--color-gray-50)', borderRadius: 'var(--radius-lg)' }}>
+                <PitchVisualizer pitch={data.predominant_pitch} />
+              </div>
+
+              {/* Core Metrics Grid */}
+              <div className="primary-metrics">
+                <div className="metric highlight">
+                  <div className="metric-value">
+                    {data.total_area_sqft?.toLocaleString() || '—'}
+                  </div>
+                  <div className="metric-label">Square Feet</div>
+                </div>
+                <div className="metric">
+                  <div className="metric-value">{data.predominant_pitch || '—'}</div>
+                  <div className="metric-label">Pitch</div>
+                </div>
+                {data.squares_needed && (
+                  <div className="metric">
+                    <div className="metric-value">{data.squares_needed}</div>
+                    <div className="metric-label">Squares</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Confidence & Quality */}
+              <div className="confidence-minimal">
+                <div className="confidence-dot" style={{
+                  background: data.confidence_score > 0.7 ? 'var(--color-success)' : 'var(--color-warning)'
+                }} />
+                <div style={{ flex: 1 }}>
+                  <strong>{Math.round((data.confidence_score || 0) * 100)}% Confidence</strong>
+                  {data.imagery_quality && (
+                    <span style={{ marginLeft: 'var(--space-2)', opacity: 0.7 }}>
+                      • {data.imagery_quality} Quality
+                    </span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Error Message */}
+          {data.message && (
+            <div className="error-message">
+              <Icons.AlertTriangle />
+              <span>{data.message}</span>
             </div>
-            {data.squares_needed && (
-              <div className="metric">
-                <div className="metric-value">{data.squares_needed}</div>
-                <div className="metric-label">Squares</div>
+          )}
+        </div>
+
+        {/* === RIGHT COLUMN: Detailed Data === */}
+        <div className="result-right-col">
+
+          {hasValidData && (
+            <>
+              {/* Extended Insights Row */}
+              <div>
+                <h5 style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color-gray-500)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  marginBottom: 'var(--space-3)'
+                }}>
+                  Environmental & Solar Analysis
+                </h5>
+                <div className="extended-insights">
+                  {data.max_sunshine_hours_per_year && (
+                    <div className="insight-card">
+                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: '#f59e0b' }}>
+                        {Math.round(data.max_sunshine_hours_per_year).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>Sun Hours/Year</div>
+                    </div>
+                  )}
+                  {data.carbon_offset_factor && (
+                    <div className="insight-card">
+                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: '#10b981' }}>
+                        {Math.round(data.carbon_offset_factor)}
+                      </div>
+                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>kg CO₂/MWh</div>
+                    </div>
+                  )}
+                  {data.max_panels && (
+                    <div className="insight-card">
+                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: '#3b82f6' }}>
+                        {data.max_panels}
+                      </div>
+                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>Max Panels</div>
+                    </div>
+                  )}
+                  {data.roof_facet_count && (
+                    <div className="insight-card">
+                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: 'var(--color-gray-700)' }}>
+                        {data.roof_facet_count}
+                      </div>
+                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>Facets</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Roof Segments Table */}
+              {data.roof_segments && data.roof_segments.length > 0 && (
+                <div>
+                  <h5 style={{
+                    fontSize: 'var(--font-size-xs)',
+                    color: 'var(--color-gray-500)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    marginBottom: 'var(--space-3)',
+                    display: 'flex',
+                    justifyContent: 'space-between'
+                  }}>
+                    <span>Roof Facet Details</span>
+                    <span>{data.roof_segments.length} Segments</span>
+                  </h5>
+                  <div className="segments-table-container">
+                    <table className="segments-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '30px' }}>#</th>
+                          <th>Area (sqft)</th>
+                          <th>Pitch</th>
+                          <th>Direction</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.roof_segments.slice(0, 5).map((seg, idx) => (
+                          <tr key={idx}>
+                            <td style={{ color: 'var(--color-gray-400)' }}>{idx + 1}</td>
+                            <td style={{ fontWeight: '600' }}>{seg.area_sqft.toLocaleString()}</td>
+                            <td>{seg.pitch}</td>
+                            <td>
+                              <span style={{
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                color: 'var(--color-gray-600)',
+                                background: 'var(--color-gray-100)',
+                                padding: '2px 6px',
+                                borderRadius: '4px'
+                              }}>
+                                {seg.azimuth_direction}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {data.roof_segments.length > 5 && (
+                      <div style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: 'var(--color-gray-500)', borderTop: '1px solid var(--color-gray-100)' }}>
+                        And {data.roof_segments.length - 5} smaller facets...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Upgrade / Status Section (Right Column Bottom) */}
+          <div>
+            {showUpgrade && hasValidData && (
+              <div className="upgrade-section" style={{ marginTop: '0', background: 'var(--color-primary-50)', border: '1px solid var(--color-primary-200)' }}>
+                <div className="upgrade-info" style={{ marginBottom: 'var(--space-3)' }}>
+                  <h4 style={{ fontSize: 'var(--font-size-md)', color: 'var(--color-primary-900)' }}>Verified Report Available</h4>
+                  <p style={{ fontSize: 'var(--font-size-xs)' }}>
+                    Get detailed measurements with 99% accuracy for insurance claims.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+                  <button
+                    className="upgrade-button"
+                    onClick={onUpgrade}
+                    disabled={isUpgrading || tier2Disabled}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    {isUpgrading ? 'Processing...' : 'Upgrade to Tier 2'}
+                  </button>
+                  {!tier2Disabled && <span style={{ fontSize: '11px', color: 'var(--color-gray-500)' }}>~$30</span>}
+                </div>
+                {tier2Disabled && (
+                  <div style={{ fontSize: '11px', color: 'var(--color-warning)', marginTop: '4px' }}>
+                    EagleView Disabled
+                  </div>
+                )}
               </div>
             )}
-            <div className="metric">
-              <div className="metric-value">
-                {data.source === 'EAGLEVIEW' ? 'EagleView' : 'Google'}
+
+            {isPending && (
+              <div className="upgrade-section" style={{ marginTop: '0', background: 'var(--color-warning-light)', borderColor: 'var(--color-warning)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <div className="loading-spinner" style={{ width: 20, height: 20 }} />
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: 'var(--font-size-sm)' }}>Processing Verified Report</div>
+                    <div style={{ fontSize: 'var(--font-size-xs)' }}>This may take 2-5 minutes...</div>
+                  </div>
+                </div>
               </div>
-              <div className="metric-label">Data Source</div>
-            </div>
+            )}
           </div>
 
-          {/* Extended Data Section */}
-          {(data.max_sunshine_hours_per_year || data.roof_facet_count || data.max_panels) && (
-            <div style={{
-              marginTop: 'var(--space-4)',
-              padding: 'var(--space-4)',
-              background: 'var(--color-gray-50)',
-              borderRadius: 'var(--radius-lg)'
-            }}>
-              <h5 style={{
-                fontSize: 'var(--font-size-sm)',
-                color: 'var(--color-gray-500)',
-                marginBottom: 'var(--space-3)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
-              }}>
-                📊 Extended Insights
-              </h5>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)' }}>
-                {data.max_sunshine_hours_per_year && (
-                  <div style={{ padding: 'var(--space-3)', background: 'white', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: '700', color: '#f59e0b' }}>
-                      ☀️ {Math.round(data.max_sunshine_hours_per_year).toLocaleString()}
-                    </div>
-                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>
-                      Sun Hours/Year
-                    </div>
-                  </div>
-                )}
-
-                {data.carbon_offset_factor && (
-                  <div style={{ padding: 'var(--space-3)', background: 'white', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: '700', color: '#10b981' }}>
-                      🌱 {Math.round(data.carbon_offset_factor)}
-                    </div>
-                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>
-                      kg CO₂/MWh
-                    </div>
-                  </div>
-                )}
-
-                {data.roof_facet_count && (
-                  <div style={{ padding: 'var(--space-3)', background: 'white', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: '700', color: 'var(--color-primary-600)' }}>
-                      🏠 {data.roof_facet_count}
-                    </div>
-                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>
-                      Roof Facets
-                    </div>
-                  </div>
-                )}
-
-                {data.max_panels && (
-                  <div style={{ padding: 'var(--space-3)', background: 'white', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: '700', color: '#3b82f6' }}>
-                      ⚡ {data.max_panels}
-                    </div>
-                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>
-                      Max Panels
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Roof Segments Detail */}
-          {data.roof_segments && data.roof_segments.length > 0 && (
-            <div style={{
-              marginTop: 'var(--space-4)',
-              padding: 'var(--space-4)',
-              background: 'var(--color-gray-50)',
-              borderRadius: 'var(--radius-lg)'
-            }}>
-              <h5 style={{
-                fontSize: 'var(--font-size-sm)',
-                color: 'var(--color-gray-500)',
-                marginBottom: 'var(--space-3)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <span>🔍 Roof Segments ({data.roof_segments.length})</span>
-                <span style={{ fontWeight: 'normal', textTransform: 'none' }}>
-                  Sorted by area
-                </span>
-              </h5>
-
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  fontSize: 'var(--font-size-sm)',
-                  background: 'white',
-                  borderRadius: 'var(--radius-md)',
-                  overflow: 'hidden'
-                }}>
-                  <thead>
-                    <tr style={{ background: 'var(--color-primary-50)' }}>
-                      <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', fontWeight: '600' }}>#</th>
-                      <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', fontWeight: '600' }}>Area (sqft)</th>
-                      <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'center', fontWeight: '600' }}>Pitch</th>
-                      <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'center', fontWeight: '600' }}>Direction</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.roof_segments.slice(0, 6).map((seg, idx) => (
-                      <tr key={idx} style={{ borderTop: '1px solid var(--color-gray-100)' }}>
-                        <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--color-gray-400)' }}>{idx + 1}</td>
-                        <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', fontWeight: '500' }}>{seg.area_sqft.toLocaleString()}</td>
-                        <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'center' }}>{seg.pitch}</td>
-                        <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'center' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '2px 8px',
-                            background: 'var(--color-primary-100)',
-                            borderRadius: 'var(--radius-sm)',
-                            fontSize: 'var(--font-size-xs)',
-                            fontWeight: '600',
-                            color: 'var(--color-primary-700)'
-                          }}>
-                            {seg.azimuth_direction}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                    {data.roof_segments.length > 6 && (
-                      <tr style={{ borderTop: '1px solid var(--color-gray-100)' }}>
-                        <td colSpan={4} style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'center', color: 'var(--color-gray-400)' }}>
-                          + {data.roof_segments.length - 6} more segments
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Imagery Info */}
-          {(data.imagery_quality || data.imagery_date) && (
-            <div style={{
-              marginTop: 'var(--space-3)',
-              display: 'flex',
-              gap: 'var(--space-4)',
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--color-gray-500)'
-            }}>
-              {data.imagery_quality && (
-                <span>📷 Quality: <strong style={{ color: data.imagery_quality === 'High' ? 'var(--color-success)' : 'var(--color-gray-600)' }}>{data.imagery_quality}</strong></span>
-              )}
-              {data.imagery_date && (
-                <span>📅 Imagery: {data.imagery_date}</span>
-              )}
-            </div>
-          )}
-
-          {/* Confidence Bar */}
-          {data.confidence_score !== null && (
-            <div className="confidence-bar">
-              <div className="confidence-label">
-                <span>Confidence</span>
-                <span>{Math.round(data.confidence_score * 100)}%</span>
-              </div>
-              <div className="confidence-track">
-                <div
-                  className="confidence-fill"
-                  style={{ width: `${data.confidence_score * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Upgrade Section */}
-      {showUpgrade && hasValidData && (
-        <div className="upgrade-section">
-          <div className="upgrade-content">
-            <div className="upgrade-info">
-              <h4>🎯 Get Verified Measurements</h4>
-              <p>Professional report with ridge/valley lengths, 98% accuracy</p>
-            </div>
-            <div>
-              <button
-                className="upgrade-button"
-                onClick={onUpgrade}
-                disabled={isUpgrading || tier2Disabled}
-              >
-                {isUpgrading ? (
-                  <>
-                    <span className="loading-spinner" style={{ width: 16, height: 16 }} />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Icons.Upgrade />
-                    Upgrade to Tier 2
-                  </>
-                )}
-              </button>
-              <div className="cost-warning">
-                <Icons.AlertTriangle />
-                <span>
-                  {tier2Disabled
-                    ? 'EagleView is disabled in settings'
-                    : 'This costs approximately $30'
-                  }
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
-      )}
-
-      {/* Pending Status */}
-      {isPending && (
-        <div className="upgrade-section" style={{ borderColor: 'var(--color-warning)' }}>
-          <div className="upgrade-content" style={{ justifyContent: 'center' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div className="loading-spinner" style={{ margin: '0 auto var(--space-3)' }} />
-              <h4>Processing Verified Report</h4>
-              <p style={{ color: 'var(--color-gray-500)' }}>
-                EagleView is generating your professional report. This may take a few minutes.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -791,8 +741,10 @@ function App() {
         <p>
           RoofPro MVP • Powered by Google Solar API & EagleView
           {health && (
-            <span style={{ marginLeft: 'var(--space-4)' }}>
-              • EagleView: {health.eagleview_enabled ? '🟢 Enabled' : '🔴 Disabled'}
+            <span style={{ marginLeft: 'var(--space-4)', fontSize: '12px' }}>
+              • {health.eagleview_mock_mode ? '🧪 MOCK MODE' : '🚀 LIVE MODE'}
+              <span style={{ opacity: 0.5, margin: '0 8px' }}>|</span>
+              EagleView: {health.eagleview_enabled ? '🟢' : '🔴'}
             </span>
           )}
         </p>

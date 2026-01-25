@@ -19,7 +19,10 @@ import math
 from datetime import datetime
 from typing import Optional, Tuple
 
+import hashlib
+import json
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -28,6 +31,7 @@ from app.models import (
     DataSource,
     MeasurementStatus,
     RoofMeasurementResponse,
+    RoofOrder,
 )
 
 settings = get_settings()
@@ -453,7 +457,29 @@ async def get_tier1_estimate(
     Returns:
         RoofMeasurementResponse with estimate or MANUAL_REVIEW status
     """
+    # 0. Normalization & Hashing
+    norm_address = address.lower().strip()
+    addr_hash = hashlib.sha256(norm_address.encode()).hexdigest()
+
     try:
+        # 1. CACHE CHECK (The "Money Saver")
+        # Check DB for existing valid estimate (< 30 days old ideally, but permanent for MVP)
+        stmt = select(RoofOrder).where(RoofOrder.normalized_address_hash == addr_hash)
+        result = await db.execute(stmt)
+        cached_order = result.scalar_one_or_none()
+
+        if cached_order and cached_order.raw_google_response:
+            print(f"[CACHE HIT] Returning saved estimate for {address}")
+            try:
+                # Parse stored JSON and re-normalize (ensures format updates are applied)
+                raw_data = json.loads(cached_order.raw_google_response)
+                response = normalize_solar_data(raw_data, cached_order.address)
+                response.is_cached = True
+                return response
+            except Exception as e:
+                print(f"[CACHE ERROR] Failed to parse cached data: {e}. Fetching fresh.")
+                # Fall through to fresh fetch
+
         # Step 1: Geocode the address
         lat, lng = await geocode_address(address, db)
         
@@ -461,7 +487,39 @@ async def get_tier1_estimate(
         raw_data = await get_building_insights(lat, lng, db, address)
         
         # Step 3: Normalize to canonical format
-        return normalize_solar_data(raw_data, address)
+        response = normalize_solar_data(raw_data, address)
+
+        # 4. SAVE TO CACHE
+        # Serialize raw data for future re-processing
+        raw_json_str = json.dumps(raw_data)
+        
+        if cached_order:
+            # Update existing record
+            cached_order.raw_google_response = raw_json_str
+            cached_order.total_area_sqft = response.total_area_sqft
+            cached_order.updated_at = datetime.utcnow()
+        else:
+            # Create new cache record
+            new_order = RoofOrder(
+                address=address,
+                normalized_address_hash=addr_hash,
+                latitude=lat,
+                longitude=lng,
+                status=MeasurementStatus.ESTIMATE.value,
+                source=DataSource.GOOGLE_SOLAR.value,
+                total_area_sqft=response.total_area_sqft,
+                predominant_pitch=response.predominant_pitch,
+                confidence_score=response.confidence_score,
+                raw_google_response=raw_json_str,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(new_order)
+        
+        # Commit cache (separate from API logs)
+        await db.commit()
+
+        return response
         
     except ValueError as e:
         # Address not found or building not in database

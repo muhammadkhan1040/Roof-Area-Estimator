@@ -104,6 +104,10 @@ class RoofMeasurementResponse(BaseModel):
         default=None,
         description="Additional information or error messages"
     )
+    is_cached: bool = Field(
+        default=False,
+        description="True if data was served from database cache"
+    )
     
     # ===== NEW: Google Solar Extended Data =====
     
@@ -237,6 +241,7 @@ class RoofOrder(Base):
     
     # Address and geocoding
     address = Column(String(500), nullable=False, index=True)
+    normalized_address_hash = Column(String(64), nullable=True, index=True)  # For caching
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     
