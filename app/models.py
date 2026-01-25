@@ -205,6 +205,11 @@ class OrderRequest(BaseModel):
         min_length=5,
         description="Full address for roof measurement"
     )
+    report_type: str = Field(
+        default="PREMIUM", # BASIC or PREMIUM
+        pattern="^(BASIC|PREMIUM)$",
+        description="Type of report: BASIC (~$15) or PREMIUM (~$30)"
+    )
 
 
 class OrderStatusResponse(BaseModel):
@@ -249,6 +254,8 @@ class RoofOrder(Base):
     status = Column(String(50), default=MeasurementStatus.ESTIMATE.value)
     source = Column(String(50), default=DataSource.GOOGLE_SOLAR.value)
     eagleview_order_id = Column(String(100), nullable=True, unique=True)
+    report_type = Column(String(20), default="PREMIUM") # BASIC or PREMIUM
+    last_checked_at = Column(DateTime, nullable=True)   # For global poller
     
     # Measurement data
     total_area_sqft = Column(Float, default=0.0)
@@ -262,7 +269,8 @@ class RoofOrder(Base):
     
     # JSON storage for raw API responses (for debugging)
     raw_google_response = Column(Text, nullable=True)
-    raw_eagleview_response = Column(Text, nullable=True)
+    raw_eagleview_response = Column(Text, nullable=True) # Legacy field
+    raw_eagleview_json = Column(Text, nullable=True)     # For full report data
 
 
 class APIUsageLog(Base):

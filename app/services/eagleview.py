@@ -240,6 +240,7 @@ async def place_order(
     address: str,
     lat: float,
     lng: float,
+    report_type: str,
     db: AsyncSession,
 ) -> str:
     """
@@ -288,14 +289,18 @@ async def place_order(
     token = await get_bearer_token(db)
     
     # Prepare order request
-    # Note: This is a simplified payload - adjust based on actual EagleView API docs
+    # Map report type to Product ID
+    # 11 = Basic, 12 = Premium (Example values based on common EagleView defaults)
+    # Using strings if supported is safer, or explicit IDs if known.
+    product_id = "11" if report_type == "BASIC" else "PremiumRoofMeasurement"
+    
     order_payload = {
         "address": {
             "streetAddress": address,
             "latitude": lat,
             "longitude": lng,
         },
-        "reportType": "PremiumRoofMeasurement",
+        "reportType": product_id,
         "deliveryPreference": "IMMEDIATE",
     }
     
@@ -486,85 +491,116 @@ def normalize_eagleview_data(
         rise = math.tan(math.radians(pitch)) * 12
         pitch = f"{round(rise)}/12"
     
+    # Extended Data (Ridges, Eaves, Valleys)
+    details = roof_data.get("details", {})
+    ridge_len = details.get("ridges") or roof_data.get("ridgeLength") or 0
+    valley_len = details.get("valleys") or roof_data.get("valleyLength") or 0
+    eave_len = details.get("eaves") or roof_data.get("eaveLength") or 0
+    
+    # Waste Factor / Squares
+    # EagleView reports usually give suggested waste factors or just raw area
+    squares = total_area / 100.0 if total_area else 0
+    
+    # Roof Segments (Facets)
+    # Map 'facets' list if available
+    segments = []
+    facets = roof_data.get("facets", [])
+    if facets:
+        from app.models import RoofSegmentDetail
+        for f in facets:
+            segments.append(RoofSegmentDetail(
+                area_sqft=f.get("area", 0),
+                pitch=f"{f.get('pitch', 0)}/12",
+                azimuth_degrees=f.get("azimuth", 0),
+                azimuth_direction=f.get("compass", "N"), # Example mapping
+            ))
+            
     return RoofMeasurementResponse(
         status=MeasurementStatus.VERIFIED,
         total_area_sqft=float(total_area),
         predominant_pitch=str(pitch),
         source=DataSource.EAGLEVIEW,
-        confidence_score=0.98,  # Professional measurement
+        confidence_score=0.98,
         address=address,
         order_id=order_id,
         message="Professional measurement from EagleView",
+        # Extended
+        ridge_length_ft=float(ridge_len),
+        valley_length_ft=float(valley_len),
+        eave_length_ft=float(eave_len),
+        squares_needed=round(squares, 1),
+        roof_segments=segments if segments else None,
+        roof_facet_count=len(segments) if segments else None,
     )
 
 
-async def poll_and_update_order(
-    internal_order_id: int,
-    eagleview_order_id: str,
-) -> None:
+async def run_global_polling_loop(session_factory):
     """
-    Background task to poll EagleView for order completion.
+    Infinite background loop to poll pending orders.
     
-    This runs asynchronously after an order is placed.
-    Polls every 5 minutes until order completes or fails.
-    
-    Note: In production, consider using a proper task queue (Celery, etc.)
+    Runs every 30 minutes. Checks for completion or timeouts.
+    survives server restarts because it runs in lifespan.
     """
     import asyncio
-    from app.database import get_db_context
+    print("🔄 Global Poller Started")
     
-    max_attempts = 288  # 24 hours of polling at 5-minute intervals
-    
-    for attempt in range(max_attempts):
-        await asyncio.sleep(300)  # Wait 5 minutes
-        
-        async with get_db_context() as db:
-            try:
-                status = await check_order_status(eagleview_order_id, db)
+    while True:
+        try:
+            async with session_factory() as db:
+                # 1. Fetch pending orders
+                stmt = select(RoofOrder).where(RoofOrder.status == MeasurementStatus.PENDING.value)
+                result = await db.execute(stmt)
+                pending_orders = result.scalars().all()
                 
-                # Get the order from database
-                result = await db.execute(
-                    select(RoofOrder).where(RoofOrder.id == internal_order_id)
-                )
-                order = result.scalar_one_or_none()
+                if pending_orders:
+                    print(f"🔄 Poller: Checking {len(pending_orders)} pending orders...")
                 
-                if not order:
-                    return  # Order deleted, stop polling
+                for order in pending_orders:
+                    # 2. Timeout Check (> 72 hours)
+                    time_elapsed = datetime.utcnow() - order.created_at
+                    if time_elapsed.total_seconds() > 72 * 3600:
+                        order.status = MeasurementStatus.FAILED.value
+                        order.message = "Order timed out after 72h"
+                        order.updated_at = datetime.utcnow()
+                        print(f"❌ Order {order.eagleview_order_id} timed out.")
+                        continue
+
+                    # 3. Active Check
+                    try:
+                        status = await check_order_status(order.eagleview_order_id, db)
+                        order.last_checked_at = datetime.utcnow()
+                        
+                        if status == "COMPLETED":
+                            # Fetch Report
+                            report = await get_report(order.eagleview_order_id, db)
+                            
+                            # Normalize & Save
+                            normalized = normalize_eagleview_data(report, order.address, order.eagleview_order_id)
+                            
+                            order.status = MeasurementStatus.VERIFIED.value
+                            order.source = DataSource.EAGLEVIEW.value
+                            order.total_area_sqft = normalized.total_area_sqft
+                            order.predominant_pitch = normalized.predominant_pitch
+                            order.confidence_score = normalized.confidence_score
+                            order.raw_eagleview_json = json.dumps(report)
+                            order.updated_at = datetime.utcnow()
+                            print(f"✅ Order {order.eagleview_order_id} verified via Poller!")
+                            
+                        elif status == "FAILED":
+                            order.status = MeasurementStatus.FAILED.value
+                            order.message = "EagleView reported failure"
+                            order.updated_at = datetime.utcnow()
+                            print(f"❌ Order {order.eagleview_order_id} reported failed by API.")
+                            
+                    except Exception as e:
+                        print(f"⚠️ Error checking order {order.eagleview_order_id}: {e}")
                 
-                if status == "COMPLETED":
-                    # Fetch the report
-                    report = await get_report(eagleview_order_id, db)
-                    
-                    # Update order with Tier 2 data
-                    normalized = normalize_eagleview_data(
-                        report,
-                        order.address,
-                        eagleview_order_id,
-                    )
-                    
-                    order.status = MeasurementStatus.VERIFIED.value
-                    order.source = DataSource.EAGLEVIEW.value
-                    order.total_area_sqft = normalized.total_area_sqft
-                    order.predominant_pitch = normalized.predominant_pitch
-                    order.confidence_score = normalized.confidence_score
-                    order.raw_eagleview_response = json.dumps(report)
-                    order.updated_at = datetime.utcnow()
-                    
-                    await db.commit()
-                    return  # Done!
-                    
-                elif status == "FAILED":
-                    order.status = MeasurementStatus.FAILED.value
-                    order.message = "EagleView order failed"
-                    order.updated_at = datetime.utcnow()
-                    await db.commit()
-                    return
-                    
-                # Still pending, continue polling
+                await db.commit()
                 
-            except Exception as e:
-                # Log error but continue polling
-                print(f"Error polling order {eagleview_order_id}: {e}")
+        except Exception as e:
+            print(f"🔥 Poller Loop Critical Error: {e}")
+            
+        await asyncio.sleep(1800) # Sleep 30 minutes
 
 
 async def create_tier2_order(
@@ -572,6 +608,7 @@ async def create_tier2_order(
     lat: float,
     lng: float,
     tier1_data: Optional[RoofMeasurementResponse],
+    report_type: str,
     db: AsyncSession,
 ) -> RoofOrder:
     """
@@ -603,7 +640,11 @@ async def create_tier2_order(
             raise DailyLimitExceededError(reason)
     
     # Place the order with EagleView
-    eagleview_order_id = await place_order(address, lat, lng, db)
+    try:
+        eagleview_order_id = await place_order(address, lat, lng, report_type, db)
+    except ValueError as e:
+        # Catch 400 errors from API and re-raise cleanly
+        raise ValueError(str(e))
     
     # Create database record
     order = RoofOrder(
@@ -613,6 +654,7 @@ async def create_tier2_order(
         status=MeasurementStatus.PENDING.value,
         source=DataSource.GOOGLE_SOLAR.value,  # Will update to EAGLEVIEW when complete
         eagleview_order_id=eagleview_order_id,
+        report_type=report_type, # Store type
         total_area_sqft=tier1_data.total_area_sqft if tier1_data else 0.0,
         predominant_pitch=tier1_data.predominant_pitch if tier1_data else "Unknown",
         confidence_score=tier1_data.confidence_score if tier1_data else None,

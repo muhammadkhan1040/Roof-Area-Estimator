@@ -19,7 +19,7 @@ Run with: uvicorn app.main:app --reload
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,7 +28,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.database import get_db, init_db
+from app.database import get_db, init_db, get_db_context # NEW
 from app.models import (
     APIUsageLog,
     DailyOrderCount,
@@ -42,7 +42,10 @@ from app.models import (
 from app.services.google_solar import get_tier1_estimate, geocode_address
 from app.services.eagleview import (
     create_tier2_order,
-    poll_and_update_order,
+    check_order_status, # NEW
+    get_report,         # NEW
+    normalize_eagleview_data, # NEW
+    run_global_polling_loop, # NEW
     EagleViewDisabledError,
     DailyLimitExceededError,
     COST_EAGLEVIEW_ORDER,
@@ -65,6 +68,10 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     await init_db()
+    
+    # Start Global Poller
+    asyncio.create_task(run_global_polling_loop(get_db_context))
+    
     print("=" * 60)
     print("🏠 Two-Tier Roof Measurement API Started")
     print("=" * 60)
@@ -231,21 +238,19 @@ async def create_order(
         
         # Step 3: Create Tier 2 order (includes safety checks)
         order = await create_tier2_order(
-            address=request.address,
             lat=lat,
             lng=lng,
             tier1_data=tier1_data,
+            report_type=request.report_type, # Pass report type
             db=db,
         )
         
         await db.commit()
         
-        # Step 4: Start background polling
-        background_tasks.add_task(
-            poll_and_update_order,
-            order.id,
-            order.eagleview_order_id,
-        )
+        # Step 4: No request-specific polling task (Global Poller handles it)
+        # However, for immediate user feedback, we could check once after a short delay, 
+        # but standard flow relies on Global Poller or Manual Check.
+        pass
         
         # Build response with current (Tier 1) data
         measurement = RoofMeasurementResponse(
@@ -327,6 +332,135 @@ async def get_order_status(
         created_at=order.created_at,
         updated_at=order.updated_at,
     )
+
+
+@app.post("/orders/{order_id}/check-now", response_model=OrderStatusResponse)
+async def check_order_now(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Force an immediate status check for an order.
+    
+    Useful if you don't want to wait for the Global Poller (30m).
+    """
+    # 1. Find Order
+    result = await db.execute(
+        select(RoofOrder).where(RoofOrder.eagleview_order_id == order_id)
+    )
+    order = result.scalar_one_or_none()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+        
+    # 2. Check Status
+    try:
+        status = await check_order_status(order_id, db)
+        order.last_checked_at = datetime.utcnow()
+        
+        if status == "COMPLETED" and order.status != MeasurementStatus.VERIFIED.value:
+            # Upgrade to Verified
+            report = await get_report(order_id, db)
+            normalized = normalize_eagleview_data(report, order.address, order_id)
+            
+            order.status = MeasurementStatus.VERIFIED.value
+            order.source = DataSource.EAGLEVIEW.value
+            order.total_area_sqft = normalized.total_area_sqft
+            order.predominant_pitch = normalized.predominant_pitch
+            order.confidence_score = normalized.confidence_score
+            import json
+            order.raw_eagleview_json = json.dumps(report)
+            order.updated_at = datetime.utcnow()
+            
+            await db.commit()
+            
+        elif status == "FAILED":
+            order.status = MeasurementStatus.FAILED.value
+            order.message = "EagleView reported failure"
+            order.updated_at = datetime.utcnow()
+            await db.commit()
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Check failed: {str(e)}")
+        
+    # 3. Return Updated Response
+    # Re-fetch or reuse object? Object is attached to session.
+    # Re-construct response logic (duplicated from get_order_status)
+    measurement = RoofMeasurementResponse(
+        status=MeasurementStatus(order.status),
+        total_area_sqft=order.total_area_sqft,
+        predominant_pitch=order.predominant_pitch,
+        source=DataSource(order.source),
+        confidence_score=order.confidence_score,
+        address=order.address,
+        order_id=order.eagleview_order_id,
+        message=order.message,
+    )
+    
+    return OrderStatusResponse(
+        order_id=order.eagleview_order_id,
+        status=MeasurementStatus(order.status),
+        measurement=measurement,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+    )
+
+
+
+def to_list_filter(column, values):
+    """Helper for IN clause that handles simple lists."""
+    return column.in_(values)
+
+
+@app.get("/history", response_model=List[OrderStatusResponse])
+async def get_history(
+    type: str = Query(..., description="Filter by type: ESTIMATE or ORDER"),
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get history of estimates or orders.
+    
+    type=ESTIMATE: Returns Tier 1 estimates (status=ESTIMATE, MANUAL_REVIEW)
+    type=ORDER: Returns Tier 2 orders (status=PENDING, VERIFIED, FAILED)
+    """
+    stmt = select(RoofOrder).order_by(RoofOrder.updated_at.desc()).limit(limit)
+    
+    if type == "ESTIMATE":
+        stmt = stmt.where(to_list_filter(
+            RoofOrder.status, 
+            [MeasurementStatus.ESTIMATE.value, MeasurementStatus.MANUAL_REVIEW.value]
+        ))
+    elif type == "ORDER":
+        stmt = stmt.where(to_list_filter(
+            RoofOrder.status, 
+            [MeasurementStatus.PENDING.value, MeasurementStatus.VERIFIED.value, MeasurementStatus.FAILED.value]
+        ))
+    
+    result = await db.execute(stmt)
+    orders = result.scalars().all()
+    
+    response = []
+    for order in orders:
+        measurement = RoofMeasurementResponse(
+            status=MeasurementStatus(order.status),
+            total_area_sqft=order.total_area_sqft,
+            predominant_pitch=order.predominant_pitch,
+            source=DataSource(order.source),
+            confidence_score=order.confidence_score,
+            address=order.address,
+            order_id=order.eagleview_order_id,
+        )
+        
+        response.append(OrderStatusResponse(
+            order_id=order.eagleview_order_id or str(order.id),
+            status=MeasurementStatus(order.status),
+            measurement=measurement,
+            created_at=order.created_at,
+            updated_at=order.updated_at,
+        ))
+        
+    return response
 
 
 @app.get("/costs/summary", response_model=CostSummary)

@@ -1,62 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import { getEstimate, createOrder, getOrderStatus, getCostSummary, getHealth, ApiError } from './services/api';
-
-// Icons as inline SVGs for simplicity
-const Icons = {
-  Search: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  ),
-  Home: () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <polyline points="9,22 9,12 15,12 15,22" />
-    </svg>
-  ),
-  Lightning: () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polygon points="13,2 3,14 12,14 11,22 21,10 12,10" />
-    </svg>
-  ),
-  Shield: () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <polyline points="9,12 11,14 15,10" />
-    </svg>
-  ),
-  Clock: () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12,6 12,12 16,14" />
-    </svg>
-  ),
-  Check: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-      <polyline points="20,6 9,17 4,12" />
-    </svg>
-  ),
-  AlertTriangle: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  ),
-  Upgrade: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 19V5M5 12l7-7 7 7" />
-    </svg>
-  ),
-  Dollar: () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="12" y1="1" x2="12" y2="23" />
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-  ),
-};
+import { Icons } from './components/Icons';
+import ResultCard from './components/ResultCard';
+import OrdersPage from './pages/Orders';
 
 // Navbar Component
 function Navbar({ currentView, setView }) {
@@ -73,6 +20,13 @@ function Navbar({ currentView, setView }) {
           onClick={(e) => { e.preventDefault(); setView('home'); }}
         >
           Estimate
+        </a>
+        <a
+          href="#"
+          className={currentView === 'orders' ? 'active' : ''}
+          onClick={(e) => { e.preventDefault(); setView('orders'); }}
+        >
+          Orders
         </a>
         <a
           href="#"
@@ -121,313 +75,6 @@ function StepIndicator({ currentStep, tier2Status }) {
   );
 }
 
-// Status Badge Component
-function StatusBadge({ status }) {
-  const statusMap = {
-    'ESTIMATE': { label: 'Estimate', class: 'estimate' },
-    'PENDING': { label: 'Processing', class: 'pending' },
-    'VERIFIED': { label: 'Verified', class: 'verified' },
-    'MANUAL_REVIEW': { label: 'Manual Review', class: 'manual-review' },
-    'FAILED': { label: 'Failed', class: 'failed' },
-  };
-
-  const info = statusMap[status] || { label: status, class: 'estimate' };
-
-  return (
-    <span className={`status-badge ${info.class}`}>
-      {info.class === 'verified' && <Icons.Check />}
-      {info.label}
-    </span>
-  );
-}
-
-// Pitch Visualizer Component
-function PitchVisualizer({ pitch }) {
-  // Parse pitch like "6/12" to get the rise
-  const rise = parseInt(pitch?.split('/')[0]) || 6;
-  const angle = Math.atan(rise / 12) * (180 / Math.PI);
-
-  return (
-    <div className="pitch-visualizer">
-      <div className="roof-icon">
-        <svg viewBox="0 0 100 60" fill="none">
-          <defs>
-            <linearGradient id="roofGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#667eea" />
-              <stop offset="100%" stopColor="#764ba2" />
-            </linearGradient>
-          </defs>
-          {/* Roof shape */}
-          <polygon
-            points={`50,${10 - rise} 95,35 95,55 5,55 5,35`}
-            fill="url(#roofGrad)"
-            stroke="#4c1d95"
-            strokeWidth="2"
-          />
-          {/* Roof peak */}
-          <polygon
-            points={`50,${10 - rise} 5,35 95,35`}
-            fill="#8b5cf6"
-            stroke="#4c1d95"
-            strokeWidth="2"
-          />
-          {/* Door */}
-          <rect x="40" y="40" width="20" height="15" fill="#1e1b4b" rx="2" />
-        </svg>
-      </div>
-      <div style={{ marginLeft: 'var(--space-4)', textAlign: 'left' }}>
-        <div style={{ fontSize: 'var(--font-size-2xl)', fontWeight: '700', color: 'var(--color-gray-900)' }}>
-          {pitch || 'Unknown'}
-        </div>
-        <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>
-          Roof Pitch ({Math.round(angle)}°)
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Result Card Component
-function ResultCard({ data, onUpgrade, isUpgrading, tier2Disabled }) {
-  const isVerified = data.status === 'VERIFIED';
-  const isPending = data.status === 'PENDING';
-  const showUpgrade = data.status === 'ESTIMATE' && !isPending;
-  const hasValidData = data.total_area_sqft > 0;
-
-  return (
-    <div className={`result-card ${isVerified ? 'tier-2' : ''}`}>
-      <div className="result-card-grid">
-
-        {/* === LEFT COLUMN: Visuals & Core Metrics === */}
-        <div className="result-left-col">
-          {/* Header (Title + Address) */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
-              <StatusBadge status={data.status} />
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-400)' }}>
-                  {data.source === 'EAGLEVIEW' ? 'Source: EagleView' : 'Source: Google Solar'}
-                </div>
-                {data.is_cached && (
-                  <div style={{ fontSize: '10px', color: '#059669', fontWeight: 'bold', marginTop: '2px' }}>
-                    ⚡ FROM CACHE
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="result-address">{data.address}</div>
-          </div>
-
-          {hasValidData && (
-            <>
-              {/* Pitch Visual */}
-              <div style={{ padding: 'var(--space-4)', background: 'var(--color-gray-50)', borderRadius: 'var(--radius-lg)' }}>
-                <PitchVisualizer pitch={data.predominant_pitch} />
-              </div>
-
-              {/* Core Metrics Grid */}
-              <div className="primary-metrics">
-                <div className="metric highlight">
-                  <div className="metric-value">
-                    {data.total_area_sqft?.toLocaleString() || '—'}
-                  </div>
-                  <div className="metric-label">Square Feet</div>
-                </div>
-                <div className="metric">
-                  <div className="metric-value">{data.predominant_pitch || '—'}</div>
-                  <div className="metric-label">Pitch</div>
-                </div>
-                {data.squares_needed && (
-                  <div className="metric">
-                    <div className="metric-value">{data.squares_needed}</div>
-                    <div className="metric-label">Squares</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Confidence & Quality */}
-              <div className="confidence-minimal">
-                <div className="confidence-dot" style={{
-                  background: data.confidence_score > 0.7 ? 'var(--color-success)' : 'var(--color-warning)'
-                }} />
-                <div style={{ flex: 1 }}>
-                  <strong>{Math.round((data.confidence_score || 0) * 100)}% Confidence</strong>
-                  {data.imagery_quality && (
-                    <span style={{ marginLeft: 'var(--space-2)', opacity: 0.7 }}>
-                      • {data.imagery_quality} Quality
-                    </span>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Error Message */}
-          {data.message && (
-            <div className="error-message">
-              <Icons.AlertTriangle />
-              <span>{data.message}</span>
-            </div>
-          )}
-        </div>
-
-        {/* === RIGHT COLUMN: Detailed Data === */}
-        <div className="result-right-col">
-
-          {hasValidData && (
-            <>
-              {/* Extended Insights Row */}
-              <div>
-                <h5 style={{
-                  fontSize: 'var(--font-size-xs)',
-                  color: 'var(--color-gray-500)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  marginBottom: 'var(--space-3)'
-                }}>
-                  Environmental & Solar Analysis
-                </h5>
-                <div className="extended-insights">
-                  {data.max_sunshine_hours_per_year && (
-                    <div className="insight-card">
-                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: '#f59e0b' }}>
-                        {Math.round(data.max_sunshine_hours_per_year).toLocaleString()}
-                      </div>
-                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>Sun Hours/Year</div>
-                    </div>
-                  )}
-                  {data.carbon_offset_factor && (
-                    <div className="insight-card">
-                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: '#10b981' }}>
-                        {Math.round(data.carbon_offset_factor)}
-                      </div>
-                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>kg CO₂/MWh</div>
-                    </div>
-                  )}
-                  {data.max_panels && (
-                    <div className="insight-card">
-                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: '#3b82f6' }}>
-                        {data.max_panels}
-                      </div>
-                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>Max Panels</div>
-                    </div>
-                  )}
-                  {data.roof_facet_count && (
-                    <div className="insight-card">
-                      <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: '700', color: 'var(--color-gray-700)' }}>
-                        {data.roof_facet_count}
-                      </div>
-                      <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)' }}>Facets</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Roof Segments Table */}
-              {data.roof_segments && data.roof_segments.length > 0 && (
-                <div>
-                  <h5 style={{
-                    fontSize: 'var(--font-size-xs)',
-                    color: 'var(--color-gray-500)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    marginBottom: 'var(--space-3)',
-                    display: 'flex',
-                    justifyContent: 'space-between'
-                  }}>
-                    <span>Roof Facet Details</span>
-                    <span>{data.roof_segments.length} Segments</span>
-                  </h5>
-                  <div className="segments-table-container">
-                    <table className="segments-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: '30px' }}>#</th>
-                          <th>Area (sqft)</th>
-                          <th>Pitch</th>
-                          <th>Direction</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.roof_segments.slice(0, 5).map((seg, idx) => (
-                          <tr key={idx}>
-                            <td style={{ color: 'var(--color-gray-400)' }}>{idx + 1}</td>
-                            <td style={{ fontWeight: '600' }}>{seg.area_sqft.toLocaleString()}</td>
-                            <td>{seg.pitch}</td>
-                            <td>
-                              <span style={{
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: 'var(--color-gray-600)',
-                                background: 'var(--color-gray-100)',
-                                padding: '2px 6px',
-                                borderRadius: '4px'
-                              }}>
-                                {seg.azimuth_direction}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {data.roof_segments.length > 5 && (
-                      <div style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: 'var(--color-gray-500)', borderTop: '1px solid var(--color-gray-100)' }}>
-                        And {data.roof_segments.length - 5} smaller facets...
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Upgrade / Status Section (Right Column Bottom) */}
-          <div>
-            {showUpgrade && hasValidData && (
-              <div className="upgrade-section" style={{ marginTop: '0', background: 'var(--color-primary-50)', border: '1px solid var(--color-primary-200)' }}>
-                <div className="upgrade-info" style={{ marginBottom: 'var(--space-3)' }}>
-                  <h4 style={{ fontSize: 'var(--font-size-md)', color: 'var(--color-primary-900)' }}>Verified Report Available</h4>
-                  <p style={{ fontSize: 'var(--font-size-xs)' }}>
-                    Get detailed measurements with 99% accuracy for insurance claims.
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-                  <button
-                    className="upgrade-button"
-                    onClick={onUpgrade}
-                    disabled={isUpgrading || tier2Disabled}
-                    style={{ flex: 1, justifyContent: 'center' }}
-                  >
-                    {isUpgrading ? 'Processing...' : 'Upgrade to Tier 2'}
-                  </button>
-                  {!tier2Disabled && <span style={{ fontSize: '11px', color: 'var(--color-gray-500)' }}>~$30</span>}
-                </div>
-                {tier2Disabled && (
-                  <div style={{ fontSize: '11px', color: 'var(--color-warning)', marginTop: '4px' }}>
-                    EagleView Disabled
-                  </div>
-                )}
-              </div>
-            )}
-
-            {isPending && (
-              <div className="upgrade-section" style={{ marginTop: '0', background: 'var(--color-warning-light)', borderColor: 'var(--color-warning)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                  <div className="loading-spinner" style={{ width: 20, height: 20 }} />
-                  <div>
-                    <div style={{ fontWeight: '600', fontSize: 'var(--font-size-sm)' }}>Processing Verified Report</div>
-                    <div style={{ fontSize: 'var(--font-size-xs)' }}>This may take 2-5 minutes...</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Features Section
 function FeaturesSection() {
@@ -597,21 +244,24 @@ function App() {
   };
 
   // Handle Tier 2 upgrade
-  const handleUpgrade = async () => {
+  const handleUpgrade = async (reportType) => {
     if (!result) return;
 
     setIsUpgrading(true);
     setError(null);
 
     try {
-      const orderResponse = await createOrder(result.address);
+      // Pass the selected report type to the API
+      const orderResponse = await createOrder(result.address, reportType);
+
       setResult({
         ...orderResponse.measurement,
         order_id: orderResponse.order_id,
       });
       setStep(2);
 
-      // Start polling for order completion
+      // Start polling for order completion (frontend polling for immediate feedback)
+      // Even though backend global poller exists, this gives fast feedback for the active user.
       const interval = setInterval(async () => {
         try {
           const status = await getOrderStatus(orderResponse.order_id);
@@ -645,97 +295,114 @@ function App() {
     }
   };
 
+  const renderContent = () => {
+    if (view === 'costs') {
+      return (
+        <div style={{ paddingTop: '80px', minHeight: '100vh' }}>
+          <CostDashboard />
+        </div>
+      );
+    }
+
+    if (view === 'orders') {
+      return (
+        <div style={{ paddingTop: '80px', minHeight: '100vh', paddingBottom: '40px' }}>
+          <OrdersPage />
+        </div>
+      );
+    }
+
+    // Home View
+    return (
+      <div className="hero-content">
+        {!result ? (
+          <>
+            <h1>Professional Roof Measurements</h1>
+            <p className="subtitle">
+              Get instant estimates powered by satellite imagery, or upgrade to
+              verified reports used by insurance professionals.
+            </p>
+
+            <form onSubmit={handleEstimate} className="address-input-container">
+              <input
+                type="text"
+                className="address-input"
+                placeholder="Enter property address..."
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                disabled={loading}
+              />
+              <button
+                type="submit"
+                className="search-button"
+                disabled={loading || !address.trim()}
+              >
+                {loading ? (
+                  <span className="loading-spinner" style={{ width: 20, height: 20 }} />
+                ) : (
+                  <>
+                    <Icons.Search />
+                    <span>Get Estimate</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {error && (
+              <div className="error-message" style={{ marginTop: 'var(--space-6)', maxWidth: 600 }}>
+                <Icons.AlertTriangle />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <FeaturesSection />
+          </>
+        ) : (
+          <>
+            <StepIndicator
+              currentStep={result.status === 'VERIFIED' ? 3 : step}
+              tier2Status={result.status}
+            />
+
+            <ResultCard
+              data={result}
+              onUpgrade={handleUpgrade}
+              isUpgrading={isUpgrading}
+              tier2Disabled={!health?.eagleview_enabled}
+            />
+
+            {error && (
+              <div className="error-message" style={{ marginTop: 'var(--space-4)', maxWidth: 600 }}>
+                <Icons.AlertTriangle />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleReset}
+              style={{
+                marginTop: 'var(--space-6)',
+                padding: 'var(--space-3) var(--space-6)',
+                background: 'rgba(255,255,255,0.1)',
+                color: 'white',
+                borderRadius: 'var(--radius-lg)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                cursor: 'pointer',
+              }}
+            >
+              ← New Estimate
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="hero">
       <Navbar currentView={view} setView={setView} />
 
-      {view === 'home' ? (
-        <div className="hero-content">
-          {!result ? (
-            <>
-              <h1>Professional Roof Measurements</h1>
-              <p className="subtitle">
-                Get instant estimates powered by satellite imagery, or upgrade to
-                verified reports used by insurance professionals.
-              </p>
-
-              <form onSubmit={handleEstimate} className="address-input-container">
-                <input
-                  type="text"
-                  className="address-input"
-                  placeholder="Enter property address..."
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  disabled={loading}
-                />
-                <button
-                  type="submit"
-                  className="search-button"
-                  disabled={loading || !address.trim()}
-                >
-                  {loading ? (
-                    <span className="loading-spinner" style={{ width: 20, height: 20 }} />
-                  ) : (
-                    <>
-                      <Icons.Search />
-                      <span>Get Estimate</span>
-                    </>
-                  )}
-                </button>
-              </form>
-
-              {error && (
-                <div className="error-message" style={{ marginTop: 'var(--space-6)', maxWidth: 600 }}>
-                  <Icons.AlertTriangle />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <FeaturesSection />
-            </>
-          ) : (
-            <>
-              <StepIndicator
-                currentStep={result.status === 'VERIFIED' ? 3 : step}
-                tier2Status={result.status}
-              />
-
-              <ResultCard
-                data={result}
-                onUpgrade={handleUpgrade}
-                isUpgrading={isUpgrading}
-                tier2Disabled={!health?.eagleview_enabled}
-              />
-
-              {error && (
-                <div className="error-message" style={{ marginTop: 'var(--space-4)', maxWidth: 600 }}>
-                  <Icons.AlertTriangle />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <button
-                onClick={handleReset}
-                style={{
-                  marginTop: 'var(--space-6)',
-                  padding: 'var(--space-3) var(--space-6)',
-                  background: 'rgba(255,255,255,0.1)',
-                  color: 'white',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  cursor: 'pointer',
-                }}
-              >
-                ← New Estimate
-              </button>
-            </>
-          )}
-        </div>
-      ) : (
-        <div style={{ paddingTop: '80px', minHeight: '100vh' }}>
-          <CostDashboard />
-        </div>
-      )}
+      {renderContent()}
 
       <footer className="footer">
         <p>

@@ -9,6 +9,18 @@
 // In production, set this to your API URL
 const API_BASE_URL = '';
 
+
+/**
+ * Get history of estimates or orders
+ * 
+ * @param {string} type - 'ESTIMATE' or 'ORDER'
+ * @param {number} limit - Max items
+ * @returns {Promise<Array>} List of orders
+ */
+export async function getHistory(type, limit = 50) {
+    return request(`/history?type=${type}&limit=${limit}`);
+}
+
 /**
  * Custom error class for API errors
  */
@@ -87,10 +99,13 @@ export async function getEstimate(address) {
  * @param {string} address - Full street address
  * @returns {Promise<Object>} OrderStatusResponse
  */
-export async function createOrder(address) {
+export async function createOrder(address, reportType = "PREMIUM") {
     return request('/order', {
         method: 'POST',
-        body: JSON.stringify({ address }),
+        body: JSON.stringify({
+            address,
+            report_type: reportType
+        }),
     });
 }
 
@@ -161,4 +176,17 @@ export default {
     getCostSummary,
     listOrders,
     pollOrderStatus,
+    checkOrderNow,
 };
+
+/**
+ * Force an immediate status check
+ * 
+ * @param {string} orderId - Order ID to check
+ * @returns {Promise<Object>} Updated OrderStatusResponse
+ */
+export async function checkOrderNow(orderId) {
+    return request(`/orders/${orderId}/check-now`, {
+        method: 'POST',
+    });
+}
