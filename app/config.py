@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     google_api_key: str = "not_configured"
     
     # EagleView APIs (Tier 2) - ~$30 per order!
+    # Costs
+    cost_eagleview_basic: float = 15.0
+    cost_eagleview_premium: float = 30.0
+
     eagleview_client_id: str
     eagleview_client_secret: str
     eagleview_base_url: str = "https://api.eagleview.com"

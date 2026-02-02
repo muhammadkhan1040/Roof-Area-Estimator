@@ -304,7 +304,11 @@ async def place_order(
         "deliveryPreference": "IMMEDIATE",
     }
     
+    
     start_time = datetime.utcnow()
+    
+    # Determine cost based on type
+    estimated_cost = settings.cost_eagleview_basic if report_type == "BASIC" else settings.cost_eagleview_premium
     
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
@@ -318,15 +322,15 @@ async def place_order(
             )
             response_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             
-            # Log the order (this is the $30 call!)
+            # Log exact cost
             await log_api_call(
                 db=db,
                 endpoint="orders",
                 method="POST",
-                cost=COST_EAGLEVIEW_ORDER,
+                cost=estimated_cost, # Dynamic cost
                 address=address,
                 status=response.status_code,
-                success=response.status_code in (200, 201, 202),
+                success=response.status_code in (200, 201),
                 response_time_ms=response_time_ms,
             )
             

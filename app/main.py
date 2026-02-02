@@ -238,10 +238,11 @@ async def create_order(
         
         # Step 3: Create Tier 2 order (includes safety checks)
         order = await create_tier2_order(
+            address=request.address, # Added missing address
             lat=lat,
             lng=lng,
             tier1_data=tier1_data,
-            report_type=request.report_type, # Pass report type
+            report_type=request.report_type,
             db=db,
         )
         
@@ -412,6 +413,7 @@ def to_list_filter(column, values):
     return column.in_(values)
 
 
+
 @app.get("/history", response_model=List[OrderStatusResponse])
 async def get_history(
     type: str = Query(..., description="Filter by type: ESTIMATE or ORDER"),
@@ -440,17 +442,39 @@ async def get_history(
     result = await db.execute(stmt)
     orders = result.scalars().all()
     
+    import json
+    from app.services.google_solar import normalize_solar_data
+    from app.services.eagleview import normalize_eagleview_data
+    
     response = []
     for order in orders:
-        measurement = RoofMeasurementResponse(
-            status=MeasurementStatus(order.status),
-            total_area_sqft=order.total_area_sqft,
-            predominant_pitch=order.predominant_pitch,
-            source=DataSource(order.source),
-            confidence_score=order.confidence_score,
-            address=order.address,
-            order_id=order.eagleview_order_id,
-        )
+        measurement = None
+        
+        # Hydrate from raw JSON if available to get full details (segments, sun hours, etc)
+        try:
+            if order.status == MeasurementStatus.ESTIMATE.value and order.raw_google_response:
+                raw = json.loads(order.raw_google_response)
+                measurement = normalize_solar_data(raw, order.address)
+                # Ensure status is preserved (in case API returns ESTIMATE but DB is MANUAL_REVIEW? Unlikely for saved)
+                measurement.status = MeasurementStatus(order.status)
+                
+            elif order.status == MeasurementStatus.VERIFIED.value and order.raw_eagleview_json:
+                raw = json.loads(order.raw_eagleview_json)
+                measurement = normalize_eagleview_data(raw, order.address, order.eagleview_order_id)
+        except Exception as e:
+            print(f"Error hydrating order {order.id}: {e}")
+            
+        # Fallback to stored columns if hydration failed
+        if not measurement:
+            measurement = RoofMeasurementResponse(
+                status=MeasurementStatus(order.status),
+                total_area_sqft=order.total_area_sqft,
+                predominant_pitch=order.predominant_pitch,
+                source=DataSource(order.source),
+                confidence_score=order.confidence_score,
+                address=order.address,
+                order_id=order.eagleview_order_id,
+            )
         
         response.append(OrderStatusResponse(
             order_id=order.eagleview_order_id or str(order.id),

@@ -44,72 +44,19 @@ function PitchVisualizer({ pitch }) {
     );
 }
 
-// Upgrade Selection Modal
-function UpgradeModal({ onClose, onConfirm, isProcessing }) {
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '500px' }}>
-                <div className="modal-header">
-                    <h3>Select Report Type</h3>
-                    <button className="close-button" onClick={onClose} disabled={isProcessing}>
-                        <Icons.Menu />
-                    </button>
-                </div>
-
-                <div style={{ display: 'grid', gap: '16px', padding: '20px 0' }}>
-                    {/* Basic Option */}
-                    <div className="upgrade-option" onClick={() => onConfirm('BASIC')}
-                        style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s', hover: { borderColor: '#3b82f6' } }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <strong style={{ fontSize: '1.1em' }}>Basic Report</strong>
-                            <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8em' }}>~$15</span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.9em', color: '#6b7280' }}>
-                            Essential measurements for simple estimates.
-                        </p>
-                    </div>
-
-                    {/* Premium Option */}
-                    <div className="upgrade-option" onClick={() => onConfirm('PREMIUM')}
-                        style={{ border: '2px solid #8b5cf6', background: '#f5f3ff', borderRadius: '8px', padding: '16px', cursor: 'pointer', position: 'relative' }}>
-                        <div style={{ position: 'absolute', top: '-10px', right: '10px', background: '#8b5cf6', color: 'white', fontSize: '0.7em', padding: '2px 8px', borderRadius: '10px' }}>
-                            RECOMMENDED
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <strong style={{ fontSize: '1.1em', color: '#4c1d95' }}>Premium Report</strong>
-                            <span style={{ background: '#8b5cf6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8em' }}>~$30</span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.9em', color: '#5b21b6' }}>
-                            Full structural detail, precise waste calculation, and verified accuracy for insurance.
-                        </p>
-                    </div>
-                </div>
-
-                {isProcessing && (
-                    <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.9em' }}>
-                        Processing order...
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
+// NOTE: UpgradeModal removed in favor of Tier2Setup page
 
 export default function ResultCard({ data, onUpgrade, isUpgrading, tier2Disabled }) {
-    const [showModal, setShowModal] = useState(false);
     const isVerified = data.status === 'VERIFIED';
     const isPending = data.status === 'PENDING';
     const showUpgrade = data.status === 'ESTIMATE' && !isPending;
     const hasValidData = data.total_area_sqft > 0;
 
     const handleUpgradeClick = () => {
-        setShowModal(true);
-    };
-
-    const handleConfirm = (type) => {
-        onUpgrade(type);
-        setShowModal(false);
+        // Trigger navigation to full setup page
+        // App.jsx will handle switching view to 'tier2_setup'
+        // onUpgrade here expects to be called to INIT the flow
+        if (onUpgrade) onUpgrade();
     };
 
     return (
@@ -343,14 +290,6 @@ export default function ResultCard({ data, onUpgrade, isUpgrading, tier2Disabled
 
                 </div>
             </div>
-
-            {showModal && (
-                <UpgradeModal
-                    onClose={() => setShowModal(false)}
-                    onConfirm={handleConfirm}
-                    isProcessing={isUpgrading}
-                />
-            )}
         </div>
     );
 }

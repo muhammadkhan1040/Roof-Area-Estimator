@@ -5,9 +5,9 @@
  * Includes error handling, retries, and response normalization.
  */
 
-// Use empty string to use Vite proxy in development
-// In production, set this to your API URL
-const API_BASE_URL = '';
+// Use VITE_API_URL env variable for production, empty string for dev proxy
+// Set VITE_API_URL in .env.production or at build time
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 
 /**

@@ -13,6 +13,7 @@ export default defineConfig({
       '/orders': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
       '/costs': 'http://localhost:8000',
+      '/history': 'http://localhost:8000',
     },
   },
 })

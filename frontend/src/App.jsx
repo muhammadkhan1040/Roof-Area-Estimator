@@ -1,4 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import Tier2Setup from './components/Tier2Setup';
+
+// ... (existing imports)
+
+
+
+// Home View
 import './App.css';
 import { getEstimate, createOrder, getOrderStatus, getCostSummary, getHealth, ApiError } from './services/api';
 import { Icons } from './components/Icons';
@@ -243,25 +250,27 @@ function App() {
     }
   };
 
-  // Handle Tier 2 upgrade
-  const handleUpgrade = async (reportType) => {
-    if (!result) return;
+  // Handle clicking "Upgrade" on ResultCard
+  const handleUpgradeClick = () => {
+    setView('tier2_setup'); // Switch to setup page instead of calling API immediately
+  };
 
+  // Handle confirming the order on Tier2Setup page
+  const handleConfirmOrder = async (reportType) => {
+    if (!result) return;
     setIsUpgrading(true);
-    setError(null);
 
     try {
-      // Pass the selected report type to the API
       const orderResponse = await createOrder(result.address, reportType);
 
+      // Update result with new order info
       setResult({
         ...orderResponse.measurement,
         order_id: orderResponse.order_id,
       });
       setStep(2);
 
-      // Start polling for order completion (frontend polling for immediate feedback)
-      // Even though backend global poller exists, this gives fast feedback for the active user.
+      // Start polling logic (2s interval for fast feedback)
       const interval = setInterval(async () => {
         try {
           const status = await getOrderStatus(orderResponse.order_id);
@@ -273,9 +282,11 @@ function App() {
         } catch (err) {
           console.error('Polling error:', err);
         }
-      }, 10000);
+      }, 2000);
 
       setPollInterval(interval);
+
+      setView('home'); // Go back to home to show the "Pending" card
     } catch (err) {
       setError(err.message);
     } finally {
@@ -308,6 +319,20 @@ function App() {
       return (
         <div style={{ paddingTop: '80px', minHeight: '100vh', paddingBottom: '40px' }}>
           <OrdersPage />
+        </div>
+      );
+    }
+
+    if (view === 'tier2_setup') {
+      return (
+        <div style={{ paddingTop: '80px', minHeight: '100vh' }}>
+          <Tier2Setup
+            address={result?.address}
+            area={result?.total_area_sqft}
+            onBack={() => setView('home')}
+            onConfirm={handleConfirmOrder}
+            isSubmitting={isUpgrading}
+          />
         </div>
       );
     }
@@ -366,7 +391,7 @@ function App() {
 
             <ResultCard
               data={result}
-              onUpgrade={handleUpgrade}
+              onUpgrade={handleUpgradeClick}
               isUpgrading={isUpgrading}
               tier2Disabled={!health?.eagleview_enabled}
             />

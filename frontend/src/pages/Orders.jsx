@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHistory, checkOrderNow } from '../services/api';
+import { getHistory, checkOrderNow, getHealth } from '../services/api';
 import { Icons } from '../components/Icons';
 import { StatusBadge } from '../components/StatusBadge';
 import ResultCard from '../components/ResultCard';
@@ -17,8 +17,10 @@ export default function OrdersDashboard() {
     const [loading, setLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState(null); // For Modal
     const [checkingId, setCheckingId] = useState(null); // Spinner for check status
+    const [health, setHealth] = useState(null);
 
     useEffect(() => {
+        getHealth().then(setHealth).catch(console.error);
         fetchAllData();
         // Poll active orders every 30s
         const interval = setInterval(() => {
@@ -249,7 +251,7 @@ export default function OrdersDashboard() {
                                 data={selectedOrder.measurement}
                                 onUpgrade={() => { }} // History items generally can't be upgraded here unless we want to allow upgrading ESTIMATEs
                                 isUpgrading={false}
-                                tier2Disabled={true} // Disable upgrade in modal for now to keep it simple
+                                tier2Disabled={!health?.eagleview_enabled}
                             />
 
                             {/* Verification specific data */}
